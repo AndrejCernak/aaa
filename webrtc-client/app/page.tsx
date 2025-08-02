@@ -11,8 +11,9 @@ export default function HomePage() {
   const socketRef = useRef<WebSocket | null>(null)
   const [myToken, setMyToken] = useState<string | null>(null)
 
-  // Získanie FCM tokenu a uloženie
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
     Notification.requestPermission().then(async (permission) => {
       if (permission === 'granted') {
         const token = await getToken(messaging, {
@@ -31,6 +32,8 @@ export default function HomePage() {
   }, [])
 
   useEffect(() => {
+    if (typeof window === 'undefined') return
+
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker
         .register('/firebase-messaging-sw.js')
