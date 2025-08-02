@@ -9,7 +9,7 @@ export default function HomePage() {
   const [socket, setSocket] = useState<WebSocket | null>(null)
 
   useEffect(() => {
-    const ws = new WebSocket('https://tokenytest.onrender.com') // ← sem dáš svoju WebSocket adresu z Render
+    const ws = new WebSocket('https://bbb-node.onrender.com') // ← sem dáš svoju WebSocket adresu z Render
     setSocket(ws)
 
     ws.onmessage = async (message) => {
