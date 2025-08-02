@@ -61,7 +61,7 @@ export default function HomePage() {
     if (permission === 'granted' && messaging) {
       try {
         const token = await getToken(messaging, {
-          vapidKey: 'BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI',
+          vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
         })
         console.log('✅ FCM token:', token)
         setMyToken(token)
