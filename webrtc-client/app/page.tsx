@@ -12,35 +12,6 @@ export default function HomePage() {
   const [myToken, setMyToken] = useState<string | null>(null)
 
   useEffect(() => {
-  if (typeof window === 'undefined') return
-
-  Notification.requestPermission().then(async (permission) => {
-    if (permission === 'granted' && messaging) {
-      try {
-        const token = await getToken(messaging, {
-          vapidKey: 'BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI',
-        })
-        console.log('FCM token:', token)
-        setMyToken(token)
-        localStorage.setItem('fcm_token', token)
-      } catch (err) {
-        console.error('Chyba pri získavaní FCM tokenu:', err)
-      }
-    } else {
-      console.warn('🔒 Notifikácie zablokované alebo messaging je null.')
-    }
-  })
-
-  if (messaging) {
-    onMessage(messaging, (payload) => {
-      console.log('🔔 Notifikácia:', payload)
-      alert('📞 Prichádzajúci hovor!')
-    })
-  }
-}, [])
-
-
-  useEffect(() => {
     if (typeof window === 'undefined') return
 
     if ('serviceWorker' in navigator) {
@@ -53,9 +24,15 @@ export default function HomePage() {
           console.error('❌ Service Worker registration failed:', err)
         })
     }
+
+    if (messaging) {
+      onMessage(messaging, (payload) => {
+        console.log('🔔 Notifikácia (foreground):', payload)
+        alert('📞 Prichádzajúci hovor!')
+      })
+    }
   }, [])
 
-  // WebSocket
   useEffect(() => {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
@@ -79,7 +56,24 @@ export default function HomePage() {
     return () => ws.close()
   }, [])
 
-  // Spustenie hovoru
+  const requestPushPermission = async () => {
+    const permission = await Notification.requestPermission()
+    if (permission === 'granted' && messaging) {
+      try {
+        const token = await getToken(messaging, {
+          vapidKey: 'BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI',
+        })
+        console.log('✅ FCM token:', token)
+        setMyToken(token)
+        localStorage.setItem('fcm_token', token)
+      } catch (err) {
+        console.error('❌ Nepodarilo sa získať FCM token:', err)
+      }
+    } else {
+      console.warn('🔒 Notifikácie nepovolené alebo messaging null.')
+    }
+  }
+
   const setupConnection = async (isCaller: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
@@ -112,7 +106,6 @@ export default function HomePage() {
     peerConnection.current = pc
 
     if (isCaller) {
-      // 🔔 Pošli push notifikáciu
       const recipientToken = prompt('Zadaj FCM token druhej osoby:')
       if (recipientToken) {
         await fetch('/api/sendNotification', {
@@ -122,7 +115,6 @@ export default function HomePage() {
         })
       }
 
-      // Pošli WebSocket call aj WebRTC offer
       socketRef.current?.send(JSON.stringify({ type: 'call' }))
 
       const offer = await pc.createOffer()
@@ -177,10 +169,20 @@ export default function HomePage() {
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 gap-4 bg-black text-white">
       <h1 className="text-2xl font-bold">WebRTC Hovor</h1>
+
+      <button
+        onClick={requestPushPermission}
+        className="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded"
+      >
+        Povoliť upozornenia
+      </button>
+
       <p className="text-sm text-gray-400">
-        Tvoj FCM token: <br />
-        <span className="break-all">{myToken || 'Načítava sa...'}</span>
+        Tvoj FCM token:
+        <br />
+        <span className="break-all">{myToken ?? 'Najprv povoľ notifikácie.'}</span>
       </p>
+
       <div className="flex gap-4">
         <button
           className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
@@ -195,6 +197,7 @@ export default function HomePage() {
           Prijať
         </button>
       </div>
+
       <div className="flex gap-4 mt-6">
         <div>
           <h2>Lokálne video</h2>
