@@ -12,6 +12,10 @@ const firebaseConfig = {
 };
 
 const app = initializeApp(firebaseConfig)
-const messaging = getMessaging(app)
+
+// `firebase/messaging` relies on browser APIs that aren't available during
+// server‑side rendering. Initialising it only when `window` is defined prevents
+// build‑time crashes on platforms like Vercel.
+const messaging = typeof window !== 'undefined' ? getMessaging(app) : null
 
 export { messaging, getToken, onMessage }
