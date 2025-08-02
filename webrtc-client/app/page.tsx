@@ -6,30 +6,30 @@ export default function HomePage() {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
-  const [socket, setSocket] = useState<WebSocket | null>(null)
-
   const socketRef = useRef<WebSocket | null>(null)
 
-useEffect(() => {
-  const ws = new WebSocket('wss://bbb-node.onrender.com')
-  socketRef.current = ws
+  useEffect(() => {
+    const ws = new WebSocket('wss://bbb-node.onrender.com')
+    socketRef.current = ws
 
-  ws.onmessage = async (message) => {
-    const data = JSON.parse(message.data)
+    ws.onmessage = async (message) => {
+      const data = JSON.parse(message.data)
 
-    if (data.type === 'offer') {
-      await handleOffer(data.offer)
-    } else if (data.type === 'answer') {
-      await handleAnswer(data.answer)
-    } else if (data.type === 'ice') {
-      if (peerConnection.current) {
-        await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+      if (data.type === 'call') {
+        alert('📞 Dostali ste hovor! Kliknite na „Prijať“ pre spojenie.')
+      } else if (data.type === 'offer') {
+        await handleOffer(data.offer)
+      } else if (data.type === 'answer') {
+        await handleAnswer(data.answer)
+      } else if (data.type === 'ice') {
+        if (peerConnection.current) {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+        }
       }
     }
-  }
 
-  return () => ws.close()
-}, [])
+    return () => ws.close()
+  }, [])
 
   const setupConnection = async (isCaller: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
@@ -37,7 +37,12 @@ useEffect(() => {
 
     const pc = new RTCPeerConnection({
       iceServers: [
-        { urls: 'stun:stun.l.google.com:19302' }, // Google STUN server
+        { urls: 'stun:stun.l.google.com:19302' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
       ]
     })
 
@@ -51,20 +56,23 @@ useEffect(() => {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
+        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
       }
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE connection state:', pc.iceConnectionState)
+      console.log('ICE state:', pc.iceConnectionState)
     }
 
     peerConnection.current = pc
 
     if (isCaller) {
+      // ➕ Tu posielame „notifikáciu“ cez WebSocket
+      socketRef.current?.send(JSON.stringify({ type: 'call' }))
+
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      socket?.send(JSON.stringify({ type: 'offer', offer }))
+      socketRef.current?.send(JSON.stringify({ type: 'offer', offer }))
     }
   }
 
@@ -75,6 +83,11 @@ useEffect(() => {
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
+        {
+          urls: 'turn:openrelay.metered.ca:80',
+          username: 'openrelayproject',
+          credential: 'openrelayproject'
+        }
       ]
     })
 
@@ -88,12 +101,12 @@ useEffect(() => {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socket?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
+        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
       }
     }
 
     pc.oniceconnectionstatechange = () => {
-      console.log('ICE connection state (receiver):', pc.iceConnectionState)
+      console.log('ICE state (receiver):', pc.iceConnectionState)
     }
 
     peerConnection.current = pc
@@ -101,7 +114,7 @@ useEffect(() => {
     await pc.setRemoteDescription(new RTCSessionDescription(offer))
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    socket?.send(JSON.stringify({ type: 'answer', answer }))
+    socketRef.current?.send(JSON.stringify({ type: 'answer', answer }))
   }
 
   const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
