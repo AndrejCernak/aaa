@@ -1,12 +1,46 @@
 'use client'
 
 import { useEffect, useRef, useState } from 'react'
+import { getToken, onMessage } from 'firebase/messaging'
+import { messaging } from '@/lib/firebase'
 
 export default function HomePage() {
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
+
+  // 📲 Získaj FCM token (ak užívateľ povolí notifikácie)
+  useEffect(() => {
+    Notification.requestPermission().then(async (permission) => {
+      if (permission === 'granted') {
+        const fcmToken = await getToken(messaging, {
+        vapidKey: "BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI",
+        })
+        console.log('FCM token:', fcmToken)
+      }
+    })
+
+    // 📥 Notifikácia keď je aplikácia otvorená
+    onMessage(messaging, (payload) => {
+      console.log('Foreground notification:', payload)
+      alert('📞 Prichádzajúci hovor!')
+    })
+  }, [])
+
+  useEffect(() => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .register('/firebase-messaging-sw.js')
+      .then((registration) => {
+        console.log('✅ Service Worker registered:', registration)
+      })
+      .catch((err) => {
+        console.error('❌ Service Worker registration failed:', err)
+      })
+  }
+}, [])
+
 
   useEffect(() => {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
@@ -41,9 +75,9 @@ export default function HomePage() {
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
-      ]
+          credential: 'openrelayproject',
+        },
+      ],
     })
 
     stream.getTracks().forEach((track) => pc.addTrack(track, stream))
@@ -67,7 +101,7 @@ export default function HomePage() {
     peerConnection.current = pc
 
     if (isCaller) {
-      // ➕ Tu posielame „notifikáciu“ cez WebSocket
+      // 🔔 Spustenie hovoru = notifikácia
       socketRef.current?.send(JSON.stringify({ type: 'call' }))
 
       const offer = await pc.createOffer()
@@ -86,9 +120,9 @@ export default function HomePage() {
         {
           urls: 'turn:openrelay.metered.ca:80',
           username: 'openrelayproject',
-          credential: 'openrelayproject'
-        }
-      ]
+          credential: 'openrelayproject',
+        },
+      ],
     })
 
     stream.getTracks().forEach((track) => pc.addTrack(track, stream))

@@ -1,6 +1,19 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import React, { useEffect, useRef } from "react";
+
+useEffect(() => {
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker
+      .register('/firebase-messaging-sw.js')
+      .then((registration) => {
+        console.log('Service Worker registered', registration)
+      })
+      .catch((err) => console.error('Service Worker registration failed', err))
+  }
+}, [])
+
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -18,6 +31,8 @@ export const metadata: Metadata = {
   manifest: "/manifest.json", // toto je dôležité pre Next.js 13+
   themeColor: "#000000",
 };
+
+
 
 export default function RootLayout({
   children,
