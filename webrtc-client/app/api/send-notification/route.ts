@@ -28,7 +28,7 @@ export async function POST(req: NextRequest) {
     webpush: {
       notification: {
         icon: '/icon-192.png',
-        click_action: 'https://TVOJA-VERCEL-ADRESA.vercel.app',
+        click_action: 'https://aaa-poll.vercel.app',
       },
     },
   }
