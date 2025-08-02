@@ -9,7 +9,7 @@ export default function HomePage() {
   const [socket, setSocket] = useState<WebSocket | null>(null)
 
   useEffect(() => {
-    const ws = new WebSocket('https://bbb-node.onrender.com') // ← sem dáš svoju WebSocket adresu z Render
+    const ws = new WebSocket('wss://bbb-node.onrender.com') // ← WebSocket server address (Render URL with wss://)
     setSocket(ws)
 
     ws.onmessage = async (message) => {
@@ -21,7 +21,7 @@ export default function HomePage() {
         await handleAnswer(data.answer)
       } else if (data.type === 'ice') {
         if (peerConnection.current) {
-          peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
         }
       }
     }
@@ -35,18 +35,28 @@ export default function HomePage() {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
 
-    const pc = new RTCPeerConnection()
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' }, // Google STUN server
+      ]
+    })
 
     stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
     pc.ontrack = (event) => {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0]
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = event.streams[0]
+      }
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
       }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state:', pc.iceConnectionState)
     }
 
     peerConnection.current = pc
@@ -59,21 +69,31 @@ export default function HomePage() {
   }
 
   const handleOffer = async (offer: RTCSessionDescriptionInit) => {
-    const pc = new RTCPeerConnection()
-
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
+
+    const pc = new RTCPeerConnection({
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+      ]
+    })
 
     stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
     pc.ontrack = (event) => {
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = event.streams[0]
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = event.streams[0]
+      }
     }
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         socket?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
       }
+    }
+
+    pc.oniceconnectionstatechange = () => {
+      console.log('ICE connection state (receiver):', pc.iceConnectionState)
     }
 
     peerConnection.current = pc
@@ -91,17 +111,17 @@ export default function HomePage() {
   }
 
   return (
-    <main className="flex flex-col items-center justify-center min-h-screen p-4 gap-4">
+    <main className="flex flex-col items-center justify-center min-h-screen p-4 gap-4 bg-black text-white">
       <h1 className="text-2xl font-bold">WebRTC Hovor</h1>
       <div className="flex gap-4">
         <button
-          className="bg-green-500 text-white px-4 py-2 rounded"
+          className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
           onClick={() => setupConnection(true)}
         >
           Zavolať
         </button>
         <button
-          className="bg-blue-500 text-white px-4 py-2 rounded"
+          className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded"
           onClick={() => setupConnection(false)}
         >
           Prijať
@@ -110,11 +130,11 @@ export default function HomePage() {
       <div className="flex gap-4 mt-6">
         <div>
           <h2>Lokálne video</h2>
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-64 h-48 bg-black" />
+          <video ref={localVideoRef} autoPlay playsInline muted className="w-64 h-48 bg-gray-800" />
         </div>
         <div>
           <h2>Vzdialené video</h2>
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-64 h-48 bg-black" />
+          <video ref={remoteVideoRef} autoPlay playsInline className="w-64 h-48 bg-gray-800" />
         </div>
       </div>
     </main>
