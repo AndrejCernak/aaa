@@ -12,24 +12,33 @@ export default function HomePage() {
   const [myToken, setMyToken] = useState<string | null>(null)
 
   useEffect(() => {
-    if (typeof window === 'undefined') return
+  if (typeof window === 'undefined') return
 
-    Notification.requestPermission().then(async (permission) => {
-      if (permission === 'granted') {
+  Notification.requestPermission().then(async (permission) => {
+    if (permission === 'granted' && messaging) {
+      try {
         const token = await getToken(messaging, {
           vapidKey: 'BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI',
         })
         console.log('FCM token:', token)
         setMyToken(token)
         localStorage.setItem('fcm_token', token)
+      } catch (err) {
+        console.error('Chyba pri získavaní FCM tokenu:', err)
       }
-    })
+    } else {
+      console.warn('🔒 Notifikácie zablokované alebo messaging je null.')
+    }
+  })
 
+  if (messaging) {
     onMessage(messaging, (payload) => {
       console.log('🔔 Notifikácia:', payload)
       alert('📞 Prichádzajúci hovor!')
     })
-  }, [])
+  }
+}, [])
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return
