@@ -8,28 +8,39 @@ export default function HomePage() {
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const [socket, setSocket] = useState<WebSocket | null>(null)
 
-  useEffect(() => {
-    const ws = new WebSocket('wss://bbb-node.onrender.com') // ← WebSocket server address (Render URL with wss://)
-    setSocket(ws)
+  const socketRef = useRef<WebSocket | null>(null)
 
-    ws.onmessage = async (message) => {
-      const data = JSON.parse(message.data)
+useEffect(() => {
+  const ws = new WebSocket('wss://bbb-node.onrender.com')
+  socketRef.current = ws
 
-      if (data.type === 'offer') {
-        await handleOffer(data.offer)
-      } else if (data.type === 'answer') {
-        await handleAnswer(data.answer)
-      } else if (data.type === 'ice') {
-        if (peerConnection.current) {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
-        }
+  ws.onmessage = async (message) => {
+    const data = JSON.parse(message.data)
+
+    if (data.type === 'offer') {
+      await handleOffer(data.offer)
+    } else if (data.type === 'answer') {
+      await handleAnswer(data.answer)
+    } else if (data.type === 'ice') {
+      if (peerConnection.current) {
+        await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
       }
     }
+  }
 
-    return () => {
-      ws.close()
+  return () => ws.close()
+}, [])
+const pc = new RTCPeerConnection({
+  iceServers: [
+    { urls: 'stun:stun.l.google.com:19302' },
+    {
+      urls: 'turn:openrelay.metered.ca:80',
+      username: 'openrelayproject',
+      credential: 'openrelayproject'
     }
-  }, [])
+  ]
+})
+
 
   const setupConnection = async (isCaller: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
