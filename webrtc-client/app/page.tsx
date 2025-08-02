@@ -39,6 +39,9 @@ export default function HomePage() {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
 
+    ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'register', clientId }))
+}
     ws.onmessage = async (message) => {
       const data = JSON.parse(message.data)
 
