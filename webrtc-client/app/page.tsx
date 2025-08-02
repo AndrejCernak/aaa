@@ -10,6 +10,8 @@ export default function HomePage() {
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
   const [myToken, setMyToken] = useState<string | null>(null)
+  const [clientId] = useState(() => crypto.randomUUID())
+
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -43,7 +45,7 @@ export default function HomePage() {
       if (data.type === 'call') {
         alert('📞 Dostali ste hovor! Kliknite na „Prijať“ pre spojenie.')
       } else if (data.type === 'offer') {
-        await handleOffer(data.offer)
+        await handleOffer(data.offer, data.from)
       } else if (data.type === 'answer') {
         await handleAnswer(data.answer)
       } else if (data.type === 'ice') {
@@ -99,7 +101,7 @@ export default function HomePage() {
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
-        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
+        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate, from: clientId }))
       }
     }
 
@@ -115,15 +117,15 @@ export default function HomePage() {
         })
       }
 
-      socketRef.current?.send(JSON.stringify({ type: 'call' }))
+      socketRef.current?.send(JSON.stringify({ type: 'call', from: clientId, to: recipientToken }))
 
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      socketRef.current?.send(JSON.stringify({ type: 'offer', offer }))
+      socketRef.current?.send(JSON.stringify({ type: 'offer', offer, from: clientId, to: recipientToken }))
     }
   }
 
-  const handleOffer = async (offer: RTCSessionDescriptionInit) => {
+    const handleOffer = async (offer: RTCSessionDescriptionInit, from: string) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
 
@@ -157,7 +159,7 @@ export default function HomePage() {
     await pc.setRemoteDescription(new RTCSessionDescription(offer))
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    socketRef.current?.send(JSON.stringify({ type: 'answer', answer }))
+    socketRef.current?.send(JSON.stringify({ type: 'answer', answer, from: clientId, to: from }))
   }
 
   const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
