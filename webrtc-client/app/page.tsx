@@ -9,39 +9,41 @@ export default function HomePage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
+  const [myToken, setMyToken] = useState<string | null>(null)
 
-  // 📲 Získaj FCM token (ak užívateľ povolí notifikácie)
+  // Získanie FCM tokenu a uloženie
   useEffect(() => {
     Notification.requestPermission().then(async (permission) => {
       if (permission === 'granted') {
-        const fcmToken = await getToken(messaging, {
-        vapidKey: "BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI",
+        const token = await getToken(messaging, {
+          vapidKey: 'BNSt0y4u5mSo6E-u3WBgWYPDomGraDybZ86L8jwvLMAAjAk1QZ1QmX6cMJNhy8tfJRWjksiBKNkshUI',
         })
-        console.log('FCM token:', fcmToken)
+        console.log('FCM token:', token)
+        setMyToken(token)
+        localStorage.setItem('fcm_token', token)
       }
     })
 
-    // 📥 Notifikácia keď je aplikácia otvorená
     onMessage(messaging, (payload) => {
-      console.log('Foreground notification:', payload)
+      console.log('🔔 Notifikácia:', payload)
       alert('📞 Prichádzajúci hovor!')
     })
   }, [])
 
   useEffect(() => {
-  if ('serviceWorker' in navigator) {
-    navigator.serviceWorker
-      .register('/firebase-messaging-sw.js')
-      .then((registration) => {
-        console.log('✅ Service Worker registered:', registration)
-      })
-      .catch((err) => {
-        console.error('❌ Service Worker registration failed:', err)
-      })
-  }
-}, [])
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker
+        .register('/firebase-messaging-sw.js')
+        .then((registration) => {
+          console.log('✅ Service Worker registered:', registration)
+        })
+        .catch((err) => {
+          console.error('❌ Service Worker registration failed:', err)
+        })
+    }
+  }, [])
 
-
+  // WebSocket
   useEffect(() => {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
@@ -65,6 +67,7 @@ export default function HomePage() {
     return () => ws.close()
   }, [])
 
+  // Spustenie hovoru
   const setupConnection = async (isCaller: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
@@ -94,14 +97,20 @@ export default function HomePage() {
       }
     }
 
-    pc.oniceconnectionstatechange = () => {
-      console.log('ICE state:', pc.iceConnectionState)
-    }
-
     peerConnection.current = pc
 
     if (isCaller) {
-      // 🔔 Spustenie hovoru = notifikácia
+      // 🔔 Pošli push notifikáciu
+      const recipientToken = prompt('Zadaj FCM token druhej osoby:')
+      if (recipientToken) {
+        await fetch('/api/sendNotification', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: recipientToken }),
+        })
+      }
+
+      // Pošli WebSocket call aj WebRTC offer
       socketRef.current?.send(JSON.stringify({ type: 'call' }))
 
       const offer = await pc.createOffer()
@@ -139,10 +148,6 @@ export default function HomePage() {
       }
     }
 
-    pc.oniceconnectionstatechange = () => {
-      console.log('ICE state (receiver):', pc.iceConnectionState)
-    }
-
     peerConnection.current = pc
 
     await pc.setRemoteDescription(new RTCSessionDescription(offer))
@@ -160,6 +165,10 @@ export default function HomePage() {
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 gap-4 bg-black text-white">
       <h1 className="text-2xl font-bold">WebRTC Hovor</h1>
+      <p className="text-sm text-gray-400">
+        Tvoj FCM token: <br />
+        <span className="break-all">{myToken || 'Načítava sa...'}</span>
+      </p>
       <div className="flex gap-4">
         <button
           className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded"
