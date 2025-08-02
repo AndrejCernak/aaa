@@ -108,7 +108,7 @@ export default function HomePage() {
     if (isCaller) {
       const recipientToken = prompt('Zadaj FCM token druhej osoby:')
       if (recipientToken) {
-        await fetch('/api/sendNotification', {
+        await fetch('/api/send-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ token: recipientToken }),
