@@ -79,8 +79,10 @@ export default function HomePage() {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream
-
+if (localVideoRef.current) {
+  localVideoRef.current.srcObject = stream
+  await localVideoRef.current.play().catch(console.error)
+}
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -140,8 +142,10 @@ export default function HomePage() {
     setRemoteClientId(from)
 
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream
-
+if (localVideoRef.current) {
+  localVideoRef.current.srcObject = stream
+  await localVideoRef.current.play().catch(console.error)
+}
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -158,6 +162,7 @@ export default function HomePage() {
     pc.ontrack = (event) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play().catch(console.error)
       }
     }
 
