@@ -14,22 +14,32 @@ export default function HomePage() {
   const [clientId] = useState(() => crypto.randomUUID())
   const [remoteClientId, setRemoteClientId] = useState<string | null>(null)
 
+  // Register SW and foreground notification
   useEffect(() => {
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('/firebase-messaging-sw.js')
     }
 
     if (messaging) {
-     onMessage(messaging, (payload) => {
-  console.log('🔔 Notifikácia (foreground):', payload)
-  if (payload.data?.from) {
-    localStorage.setItem('incoming_call_from', payload.data.from)
-  }
-  alert('📞 Prichádzajúci hovor! Otvor aplikáciu a klikni na „Prijať“')
-})
+      onMessage(messaging, (payload) => {
+        console.log('🔔 Notifikácia (foreground):', payload)
+        if (payload.data?.from) {
+          localStorage.setItem('incoming_call_from', payload.data.from)
+        }
+        alert('📞 Prichádzajúci hovor! Otvor aplikáciu a klikni na „Prijať“')
+      })
     }
   }, [])
 
+  // Get remoteClientId from localStorage if exists
+  useEffect(() => {
+    const incomingFrom = localStorage.getItem('incoming_call_from')
+    if (incomingFrom) {
+      setRemoteClientId(incomingFrom)
+    }
+  }, [])
+
+  // WebSocket
   useEffect(() => {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
@@ -60,6 +70,7 @@ export default function HomePage() {
     return () => ws.close()
   }, [])
 
+  // Request permission and get FCM token
   const requestPushPermission = async () => {
     const permission = await Notification.requestPermission()
     if (permission === 'granted' && messaging) {
@@ -75,13 +86,7 @@ export default function HomePage() {
     }
   }
 
-  useEffect(() => {
-  const incomingFrom = localStorage.getItem('incoming_call_from')
-  if (incomingFrom) {
-    setRemoteClientId(incomingFrom)
-  }
-}, [])
-
+  // Setup connection
   const setupConnection = async (isCaller: boolean) => {
     if (!isCaller && !remoteClientId) {
       alert('⚠️ Nemám ID druhej osoby – počkaj na prichádzajúci hovor.')
@@ -89,10 +94,12 @@ export default function HomePage() {
     }
 
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-if (localVideoRef.current) {
-  localVideoRef.current.srcObject = stream
-  await localVideoRef.current.play().catch(console.error)
-}
+
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream
+      await localVideoRef.current.play().catch(console.error)
+    }
+
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -109,6 +116,7 @@ if (localVideoRef.current) {
     pc.ontrack = (event) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play().catch(console.error)
       }
     }
 
@@ -133,7 +141,7 @@ if (localVideoRef.current) {
         await fetch('/api/send-notification', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: recipientToken }),
+          body: JSON.stringify({ token: recipientToken, from: clientId }),
         })
         setRemoteClientId(recipientToken)
       }
@@ -148,14 +156,16 @@ if (localVideoRef.current) {
     }
   }
 
+  // Handle offer
   const handleOffer = async (offer: RTCSessionDescriptionInit, from: string) => {
     setRemoteClientId(from)
 
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-if (localVideoRef.current) {
-  localVideoRef.current.srcObject = stream
-  await localVideoRef.current.play().catch(console.error)
-}
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream
+      await localVideoRef.current.play().catch(console.error)
+    }
+
     const pc = new RTCPeerConnection({
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
@@ -200,6 +210,7 @@ if (localVideoRef.current) {
     )
   }
 
+  // Handle answer
   const handleAnswer = async (answer: RTCSessionDescriptionInit, from: string) => {
     if (peerConnection.current) {
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer))
@@ -242,11 +253,23 @@ if (localVideoRef.current) {
       <div className="flex gap-4 mt-6">
         <div>
           <h2>Lokálne video</h2>
-          <video ref={localVideoRef} autoPlay playsInline muted className="w-64 h-48 bg-gray-800" />
+          <video
+            ref={localVideoRef}
+            autoPlay
+            playsInline
+            muted
+            className="w-64 h-48 bg-gray-800"
+          />
         </div>
         <div>
           <h2>Vzdialené video</h2>
-          <video ref={remoteVideoRef} autoPlay playsInline className="w-64 h-48 bg-gray-800" />
+          <video
+            ref={remoteVideoRef}
+            autoPlay
+            playsInline
+            muted={false}
+            className="w-64 h-48 bg-gray-800"
+          />
         </div>
       </div>
     </main>
