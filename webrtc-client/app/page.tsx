@@ -11,6 +11,8 @@ export default function HomePage() {
   const socketRef = useRef<WebSocket | null>(null)
   const [myToken, setMyToken] = useState<string | null>(null)
   const [clientId] = useState(() => crypto.randomUUID())
+  const [remoteClientId, setRemoteClientId] = useState<string | null>(null)
+
 
 
   useEffect(() => {
@@ -50,12 +52,16 @@ export default function HomePage() {
       } else if (data.type === 'offer') {
         await handleOffer(data.offer, data.from)
       } else if (data.type === 'answer') {
-        await handleAnswer(data.answer)
+      await handleAnswer(data.answer, data.from)
       } else if (data.type === 'ice') {
-        if (peerConnection.current) {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
-        }
-      }
+  if (peerConnection.current) {
+    await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+  }
+  if (!remoteClientId && data.from) {
+    setRemoteClientId(data.from)
+  }
+}
+
     }
 
     return () => ws.close()
@@ -103,32 +109,41 @@ export default function HomePage() {
     }
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate, from: clientId }))
-      }
-    }
+  if (event.candidate && remoteClientId) {
+    socketRef.current?.send(JSON.stringify({
+      type: 'ice',
+      candidate: event.candidate,
+      from: clientId,
+      to: remoteClientId
+    }))
+  }
+}
+
 
     peerConnection.current = pc
 
     if (isCaller) {
-      const recipientToken = prompt('Zadaj FCM token druhej osoby:')
-      if (recipientToken) {
-        await fetch('/api/send-notification', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token: recipientToken }),
-        })
-      }
+  const recipientToken = prompt('Zadaj FCM token druhej osoby:')
+  if (recipientToken) {
+    await fetch('/api/send-notification', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ token: recipientToken }),
+    })
+    setRemoteClientId(recipientToken) // ⬅️ TOTO TU PRIDAJ
+  }
 
-      socketRef.current?.send(JSON.stringify({ type: 'call', from: clientId, to: recipientToken }))
+  socketRef.current?.send(JSON.stringify({ type: 'call', from: clientId, to: recipientToken }))
 
-      const offer = await pc.createOffer()
-      await pc.setLocalDescription(offer)
-      socketRef.current?.send(JSON.stringify({ type: 'offer', offer, from: clientId, to: recipientToken }))
-    }
+  const offer = await pc.createOffer()
+  await pc.setLocalDescription(offer)
+  socketRef.current?.send(JSON.stringify({ type: 'offer', offer, from: clientId, to: recipientToken }))
+}
+
   }
 
     const handleOffer = async (offer: RTCSessionDescriptionInit, from: string) => {
+      setRemoteClientId(from)
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) localVideoRef.current.srcObject = stream
 
@@ -152,10 +167,16 @@ export default function HomePage() {
     }
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
-      }
-    }
+  if (event.candidate) {
+    socketRef.current?.send(JSON.stringify({
+      type: 'ice',
+      candidate: event.candidate,
+      from: clientId,
+      to: from
+    }))
+  }
+}
+
 
     peerConnection.current = pc
 
@@ -165,11 +186,12 @@ export default function HomePage() {
     socketRef.current?.send(JSON.stringify({ type: 'answer', answer, from: clientId, to: from }))
   }
 
-  const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
-    if (peerConnection.current) {
-      await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer))
-    }
+  const handleAnswer = async (answer: RTCSessionDescriptionInit, from: string) => {
+  if (peerConnection.current) {
+    await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer))
+    setRemoteClientId(from)
   }
+}
 
   return (
     <main className="flex flex-col items-center justify-center min-h-screen p-4 gap-4 bg-black text-white">
