@@ -1,10 +1,11 @@
 'use client'
+export const dynamic = 'force-dynamic'
 
 import { useEffect, useRef } from 'react'
-import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 import { initializeApp } from 'firebase/app'
+import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 
-// 1️⃣ Firebase konfigurácia
+// 🔐 Firebase konfigurácia
 const firebaseConfig = {
   apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
   authDomain: "tokeny-246df.firebaseapp.com",
@@ -15,7 +16,8 @@ const firebaseConfig = {
   measurementId: "G-QB2EJ0JFZL"
 };
 
-// 2️⃣ Inicializuj Firebase iba raz
+
+// 🔁 Inicializuj Firebase
 const app = initializeApp(firebaseConfig)
 const messaging = getMessaging(app)
 
@@ -25,20 +27,19 @@ export default function HomePage() {
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
 
-  // 3️⃣ Registrácia service worker + získanie FCM tokenu
+  // 🔁 Registruj Service Worker a FCM token
   useEffect(() => {
     const registerAndGetToken = async () => {
       if ('serviceWorker' in navigator) {
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
 
         const token = await getToken(messaging, {
-          vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU', // napr. z Firebase nastavení
+          vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
           serviceWorkerRegistration: registration,
         })
 
         if (token) {
           console.log('✅ FCM token:', token)
-          // Pošli token cez WebSocket na server
           socketRef.current?.send(JSON.stringify({ type: 'fcm-token', token }))
         }
       }
@@ -46,14 +47,12 @@ export default function HomePage() {
 
     registerAndGetToken()
 
-    // 4️⃣ Prijímanie notifikácií, keď je app otvorená
     onMessage(messaging, (payload) => {
-      console.log('🔔 Prijatá notifikácia:', payload)
+      console.log('🔔 Foreground notification:', payload)
       alert(payload.notification?.title || 'Hovor prichádza')
     })
   }, [])
 
-  // 5️⃣ WebSocket pripojenie
   useEffect(() => {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
