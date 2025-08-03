@@ -5,7 +5,6 @@ import { useEffect, useRef } from 'react'
 import { initializeApp } from 'firebase/app'
 import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 
-// 🔐 Firebase konfigurácia
 const firebaseConfig = {
   apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
   authDomain: "tokeny-246df.firebaseapp.com",
@@ -16,8 +15,6 @@ const firebaseConfig = {
   measurementId: "G-QB2EJ0JFZL"
 };
 
-
-// 🔁 Inicializuj Firebase
 const app = initializeApp(firebaseConfig)
 const messaging = getMessaging(app)
 
@@ -27,9 +24,8 @@ export default function HomePage() {
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
 
-  // 🔁 Registruj Service Worker a FCM token
   useEffect(() => {
-    const registerAndGetToken = async () => {
+    const registerFCM = async () => {
       if ('serviceWorker' in navigator) {
         const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
 
@@ -45,11 +41,11 @@ export default function HomePage() {
       }
     }
 
-    registerAndGetToken()
+    registerFCM()
 
     onMessage(messaging, (payload) => {
       console.log('🔔 Foreground notification:', payload)
-      alert(payload.notification?.title || 'Hovor prichádza')
+      alert(payload.notification?.title || 'Prichádzajúci hovor')
     })
   }, [])
 
