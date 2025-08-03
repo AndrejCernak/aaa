@@ -20,10 +20,13 @@ export default function HomePage() {
     }
 
     if (messaging) {
-      onMessage(messaging, (payload) => {
-        console.log('🔔 Foreground notifikácia:', payload)
-        alert('📞 Prichádzajúci hovor! Otvor aplikáciu a klikni na „Prijať“.')
-      })
+     onMessage(messaging, (payload) => {
+  console.log('🔔 Notifikácia (foreground):', payload)
+  if (payload.data?.from) {
+    localStorage.setItem('incoming_call_from', payload.data.from)
+  }
+  alert('📞 Prichádzajúci hovor! Otvor aplikáciu a klikni na „Prijať“')
+})
     }
   }, [])
 
@@ -71,6 +74,13 @@ export default function HomePage() {
       }
     }
   }
+
+  useEffect(() => {
+  const incomingFrom = localStorage.getItem('incoming_call_from')
+  if (incomingFrom) {
+    setRemoteClientId(incomingFrom)
+  }
+}, [])
 
   const setupConnection = async (isCaller: boolean) => {
     if (!isCaller && !remoteClientId) {
