@@ -24,7 +24,7 @@ export default function HomePage() {
     }
   }, [user])
 
-  // WebSocket connection
+  // WebSocket + register + FCM
   useEffect(() => {
     if (typeof window === 'undefined' || !role) return
 
@@ -32,14 +32,13 @@ export default function HomePage() {
     socketRef.current = ws
 
     ws.onopen = () => {
-      // Po pripojení pošleme rolu
       ws.send(JSON.stringify({ type: 'register', role }))
       console.log(`📡 Registered as ${role}`)
+      registerFCM()
     }
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data)
-
       if (data.type === 'offer') {
         await handleOffer(data.offer)
       } else if (data.type === 'answer') {
@@ -54,52 +53,48 @@ export default function HomePage() {
     return () => ws.close()
   }, [role])
 
-  // Register FCM token
-  useEffect(() => {
-    if (typeof window === 'undefined' || !role) return
+  // FCM registrácia
+  const registerFCM = async () => {
+    const { initializeApp } = await import('firebase/app')
+    const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
 
-    const registerFCM = async () => {
-      const { initializeApp } = await import('firebase/app')
-      const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
-
-      const firebaseConfig = {
-        apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
-        authDomain: "tokeny-246df.firebaseapp.com",
-        projectId: "tokeny-246df",
-        storageBucket: "tokeny-246df.firebasestorage.app",
-        messagingSenderId: "410206660442",
-        appId: "1:410206660442:web:c6b530a5cf6ec5a9e77563",
-        measurementId: "G-QB2EJ0JFZL"
-      }
-
-      const app = initializeApp(firebaseConfig)
-      const messaging = getMessaging(app)
-
-      if ('serviceWorker' in navigator) {
-        const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-
-        const token = await getToken(messaging, {
-          vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
-          serviceWorkerRegistration: registration,
-        })
-
-        if (token) {
-          console.log('✅ FCM token:', token)
-          socketRef.current?.send(JSON.stringify({
-            type: 'fcm-token',
-            token
-          }))
-        }
-      }
-
-      onMessage(messaging, (payload) => {
-        console.log('🔔 Foreground notification:', payload)
-        alert(payload.notification?.title || 'Prichádzajúci hovor')
-      })
+    const firebaseConfig = {
+      apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
+      authDomain: "tokeny-246df.firebaseapp.com",
+      projectId: "tokeny-246df",
+      storageBucket: "tokeny-246df.firebasestorage.app",
+      messagingSenderId: "410206660442",
+      appId: "1:410206660442:web:c6b530a5cf6ec5a9e77563",
+      measurementId: "G-QB2EJ0JFZL"
     }
 
-    registerFCM()
-  }, [role])
+    const app = initializeApp(firebaseConfig)
+    const messaging = getMessaging(app)
+
+    if ('serviceWorker' in navigator) {
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+
+      const token = await getToken(messaging, {
+        vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
+        serviceWorkerRegistration: registration,
+      })
+
+      if (token) {
+        console.log('✅ FCM token:', token)
+        socketRef.current?.send(JSON.stringify({
+          type: 'fcm-token',
+          token
+        }))
+      } else {
+        console.warn('⚠️ No FCM token received – user may have denied permission.')
+      }
+    }
+
+    onMessage(messaging, (payload) => {
+      console.log('🔔 Foreground notification:', payload)
+      alert(payload.notification?.title || 'Prichádzajúci hovor')
+    })
+  }
 
   // Setup WebRTC connection
   const setupConnection = async (isCaller: boolean) => {
