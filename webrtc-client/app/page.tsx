@@ -7,13 +7,13 @@ import { useUser, SignInButton, SignOutButton } from '@clerk/nextjs'
 export default function HomePage() {
   const { user, isSignedIn } = useUser()
   const [role, setRole] = useState<'admin' | 'client' | null>(null)
-  const [tokensLeft, setTokensLeft] = useState(1) // zatiaľ fixne
+  const [tokensLeft, setTokensLeft] = useState(1)
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
 
-  // Assign role based on email
+  // Určenie role
   useEffect(() => {
     if (user) {
       if (user.primaryEmailAddress?.emailAddress === 'admin@test.com') {
@@ -24,9 +24,39 @@ export default function HomePage() {
     }
   }, [user])
 
-  // Register FCM token (browser only)
+  // WebSocket connection
   useEffect(() => {
-    if (typeof window === 'undefined') return
+    if (typeof window === 'undefined' || !role) return
+
+    const ws = new WebSocket('wss://bbb-node.onrender.com')
+    socketRef.current = ws
+
+    ws.onopen = () => {
+      // Po pripojení pošleme rolu
+      ws.send(JSON.stringify({ type: 'register', role }))
+      console.log(`📡 Registered as ${role}`)
+    }
+
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data)
+
+      if (data.type === 'offer') {
+        await handleOffer(data.offer)
+      } else if (data.type === 'answer') {
+        await handleAnswer(data.answer)
+      } else if (data.type === 'ice') {
+        if (peerConnection.current) {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+        }
+      }
+    }
+
+    return () => ws.close()
+  }, [role])
+
+  // Register FCM token
+  useEffect(() => {
+    if (typeof window === 'undefined' || !role) return
 
     const registerFCM = async () => {
       const { initializeApp } = await import('firebase/app')
@@ -57,7 +87,6 @@ export default function HomePage() {
           console.log('✅ FCM token:', token)
           socketRef.current?.send(JSON.stringify({
             type: 'fcm-token',
-            role,
             token
           }))
         }
@@ -72,34 +101,8 @@ export default function HomePage() {
     registerFCM()
   }, [role])
 
-  // WebSocket connection
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-
-    const ws = new WebSocket('wss://bbb-node.onrender.com')
-    socketRef.current = ws
-
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data)
-
-      if (data.type === 'offer') {
-        await handleOffer(data.offer)
-      } else if (data.type === 'answer') {
-        await handleAnswer(data.answer)
-      } else if (data.type === 'ice') {
-        if (peerConnection.current) {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
-        }
-      }
-    }
-
-    return () => ws.close()
-  }, [])
-
   // Setup WebRTC connection
   const setupConnection = async (isCaller: boolean) => {
-    if (typeof window === 'undefined') return
-
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream
@@ -129,17 +132,13 @@ export default function HomePage() {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
       socketRef.current?.send(JSON.stringify({
-        type: 'call-admin',
-        message: 'Prichádzajúci hovor od klienta',
+        type: 'offer',
         offer
       }))
     }
   }
 
-  // Handle offer from peer
   const handleOffer = async (offer: RTCSessionDescriptionInit) => {
-    if (typeof window === 'undefined') return
-
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
     if (localVideoRef.current) {
       localVideoRef.current.srcObject = stream
@@ -170,7 +169,6 @@ export default function HomePage() {
     socketRef.current?.send(JSON.stringify({ type: 'answer', answer }))
   }
 
-  // Handle answer from peer
   const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
     if (peerConnection.current) {
       await peerConnection.current.setRemoteDescription(new RTCSessionDescription(answer))
