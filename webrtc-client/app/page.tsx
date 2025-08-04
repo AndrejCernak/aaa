@@ -1,10 +1,12 @@
 'use client'
 export const dynamic = 'force-dynamic'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { useUser, SignInButton, SignOutButton } from '@clerk/nextjs'
 import { initializeApp } from 'firebase/app'
 import { getMessaging, getToken, onMessage } from 'firebase/messaging'
 
+// 🔹 Firebase config
 const firebaseConfig = {
   apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
   authDomain: "tokeny-246df.firebaseapp.com",
@@ -19,11 +21,27 @@ const app = initializeApp(firebaseConfig)
 const messaging = getMessaging(app)
 
 export default function HomePage() {
+  const { user, isSignedIn } = useUser()
+  const [role, setRole] = useState<'admin' | 'client' | null>(null)
+  const [tokensLeft, setTokensLeft] = useState(1) // zatiaľ fixne
   const localVideoRef = useRef<HTMLVideoElement>(null)
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
 
+  // 🔹 Po prihlásení zisti rolu používateľa
+  useEffect(() => {
+    if (user) {
+      // Zatiaľ natvrdo podľa emailu
+      if (user.primaryEmailAddress?.emailAddress === 'admin@test.com') {
+        setRole('admin')
+      } else {
+        setRole('client')
+      }
+    }
+  }, [user])
+
+  // 🔹 Registrácia FCM tokenu
   useEffect(() => {
     const registerFCM = async () => {
       if ('serviceWorker' in navigator) {
@@ -36,7 +54,11 @@ export default function HomePage() {
 
         if (token) {
           console.log('✅ FCM token:', token)
-          socketRef.current?.send(JSON.stringify({ type: 'fcm-token', token }))
+          socketRef.current?.send(JSON.stringify({
+            type: 'fcm-token',
+            role,
+            token
+          }))
         }
       }
     }
@@ -47,8 +69,9 @@ export default function HomePage() {
       console.log('🔔 Foreground notification:', payload)
       alert(payload.notification?.title || 'Prichádzajúci hovor')
     })
-  }, [])
+  }, [role])
 
+  // 🔹 WebSocket pripojenie
   useEffect(() => {
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
@@ -70,19 +93,22 @@ export default function HomePage() {
     return () => ws.close()
   }, [])
 
+  // 🔹 WebRTC setup
   const setupConnection = async (isCaller: boolean) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream
+      localVideoRef.current.muted = true
+      localVideoRef.current.play()
+    }
 
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    })
-
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
     stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
     pc.ontrack = (event) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play()
       }
     }
 
@@ -97,23 +123,31 @@ export default function HomePage() {
     if (isCaller) {
       const offer = await pc.createOffer()
       await pc.setLocalDescription(offer)
-      socketRef.current?.send(JSON.stringify({ type: 'offer', offer }))
+
+      // Pošli FCM notifikáciu adminovi
+      socketRef.current?.send(JSON.stringify({
+        type: 'call-admin',
+        message: 'Prichádzajúci hovor od klienta',
+        offer
+      }))
     }
   }
 
   const handleOffer = async (offer: RTCSessionDescriptionInit) => {
     const stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true })
-    if (localVideoRef.current) localVideoRef.current.srcObject = stream
+    if (localVideoRef.current) {
+      localVideoRef.current.srcObject = stream
+      localVideoRef.current.muted = true
+      localVideoRef.current.play()
+    }
 
-    const pc = new RTCPeerConnection({
-      iceServers: [{ urls: 'stun:stun.l.google.com:19302' }],
-    })
-
+    const pc = new RTCPeerConnection({ iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] })
     stream.getTracks().forEach((track) => pc.addTrack(track, stream))
 
     pc.ontrack = (event) => {
       if (remoteVideoRef.current) {
         remoteVideoRef.current.srcObject = event.streams[0]
+        remoteVideoRef.current.play()
       }
     }
 
@@ -136,17 +170,40 @@ export default function HomePage() {
     }
   }
 
+  // 🔹 UI
+  if (!isSignedIn) {
+    return (
+      <main className="flex flex-col items-center justify-center min-h-screen bg-black text-white gap-4">
+        <h1 className="text-2xl">WebRTC PWA</h1>
+        <SignInButton />
+      </main>
+    )
+  }
+
   return (
     <main className="flex flex-col items-center justify-center min-h-screen bg-black text-white gap-4">
-      <h1 className="text-2xl">WebRTC 1:1 Videohovor</h1>
-      <div className="flex gap-4">
-        <button onClick={() => setupConnection(true)} className="bg-green-600 px-4 py-2 rounded">
-          Zavolať
-        </button>
+      <h1 className="text-2xl">Vitaj {role === 'admin' ? 'Poradca' : 'Klient'}</h1>
+      <SignOutButton />
+
+      {role === 'client' && (
+        <div>
+          <p>Zostatok tokenov: {tokensLeft}</p>
+          <button
+            disabled={tokensLeft <= 0}
+            onClick={() => setupConnection(true)}
+            className="bg-green-600 px-4 py-2 rounded disabled:opacity-50"
+          >
+            Zavolať
+          </button>
+        </div>
+      )}
+
+      {role === 'admin' && (
         <button onClick={() => setupConnection(false)} className="bg-blue-600 px-4 py-2 rounded">
           Prijať
         </button>
-      </div>
+      )}
+
       <div className="flex gap-4 mt-4">
         <div>
           <h2>Lokálne video</h2>
