@@ -12,6 +12,7 @@ export default function HomePage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
+const [notificationsEnabled, setNotificationsEnabled] = useState(false)
 
   // Určenie role
   useEffect(() => {
@@ -53,48 +54,66 @@ export default function HomePage() {
     return () => ws.close()
   }, [role])
 
-  // FCM registrácia
-  const registerFCM = async () => {
-    const { initializeApp } = await import('firebase/app')
-    const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
-
-   const firebaseConfig = {
-  apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
-  authDomain: "tokeny-246df.firebaseapp.com",
-  projectId: "tokeny-246df",
-  storageBucket: "tokeny-246df.firebasestorage.app",
-  messagingSenderId: "410206660442",
-  appId: "1:410206660442:web:c6b530a5cf6ec5a9e77563",
-  measurementId: "G-QB2EJ0JFZL"
-};
-
-    const app = initializeApp(firebaseConfig)
-    const messaging = getMessaging(app)
-
-    if ('serviceWorker' in navigator) {
-      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-
-      const token = await getToken(messaging, {
-        vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
-        serviceWorkerRegistration: registration,
-      })
-
-      if (token) {
-        console.log('✅ FCM token:', token)
-        socketRef.current?.send(JSON.stringify({
-          type: 'fcm-token',
-          token
-        }))
-      } else {
-        console.warn('⚠️ No FCM token received – user may have denied permission.')
-      }
+  const requestNotifications = async () => {
+  try {
+    const permission = await Notification.requestPermission()
+    if (permission !== 'granted') {
+      alert('⚠️ Notifikácie neboli povolené.')
+      return
     }
 
-    onMessage(messaging, (payload) => {
-      console.log('🔔 Foreground notification:', payload)
-      alert(payload.notification?.title || 'Prichádzajúci hovor')
-    })
+    // Spustíme registráciu FCM
+    await registerFCM()
+    setNotificationsEnabled(true)
+    alert('✅ Notifikácie boli povolené.')
+  } catch (err) {
+    console.error('Error enabling notifications:', err)
+    alert('❌ Nepodarilo sa povoliť notifikácie.')
   }
+}
+
+// FCM registrácia
+const registerFCM = async () => {
+  const { initializeApp } = await import('firebase/app')
+  const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
+
+  const firebaseConfig = {
+    apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
+    authDomain: "tokeny-246df.firebaseapp.com",
+    projectId: "tokeny-246df",
+    storageBucket: "tokeny-246df.firebasestorage.app",
+    messagingSenderId: "410206660442",
+    appId: "1:410206660442:web:c6b530a5cf6ec5a9e77563",
+    measurementId: "G-QB2EJ0JFZL"
+  }
+
+  const app = initializeApp(firebaseConfig)
+  const messaging = getMessaging(app)
+
+  if ('serviceWorker' in navigator) {
+    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+
+    const token = await getToken(messaging, {
+      vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
+      serviceWorkerRegistration: registration,
+    })
+
+    if (token) {
+      console.log('✅ FCM token:', token)
+      socketRef.current?.send(JSON.stringify({
+        type: 'fcm-token',
+        token
+      }))
+    } else {
+      console.warn('⚠️ No FCM token received – user may have denied permission.')
+    }
+  }
+
+  onMessage(messaging, (payload) => {
+    console.log('🔔 Foreground notification:', payload)
+    alert(payload.notification?.title || 'Prichádzajúci hovor')
+  })
+}
 
   // Setup WebRTC connection
   const setupConnection = async (isCaller: boolean) => {
