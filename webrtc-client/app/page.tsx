@@ -12,8 +12,7 @@ export default function HomePage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
-  const remoteTokenRef = useRef<string | null>(null)
-  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const remoteSocketIdRef = useRef<string | null>(null)
 
   // Určenie role
   useEffect(() => {
@@ -26,22 +25,24 @@ export default function HomePage() {
     }
   }, [user])
 
-  // WebSocket + register + FCM
+  // WebSocket + FCM auto-register
   useEffect(() => {
     if (typeof window === 'undefined' || !role) return
 
     const ws = new WebSocket('wss://bbb-node.onrender.com')
     socketRef.current = ws
 
-    ws.onopen = () => {
+    ws.onopen = async () => {
       ws.send(JSON.stringify({ type: 'register', role }))
       console.log(`📡 Registered as ${role}`)
-      // už nevoláme registerFCM() automaticky
+      await registerFCM() // automatická registrácia
     }
 
     ws.onmessage = async (event) => {
       const data = JSON.parse(event.data)
+
       if (data.type === 'offer') {
+        remoteSocketIdRef.current = data.from
         await handleOffer(data.offer)
       } else if (data.type === 'answer') {
         await handleAnswer(data.answer)
@@ -49,75 +50,60 @@ export default function HomePage() {
         if (peerConnection.current) {
           await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
         }
-      } else if (data.type === 'fcm-token') {
-        remoteTokenRef.current = data.token
       }
     }
 
     return () => ws.close()
   }, [role])
 
-
-  const requestNotifications = async () => {
+  // FCM registrácia
+  const registerFCM = async () => {
     try {
       const permission = await Notification.requestPermission()
       if (permission !== 'granted') {
-        alert('⚠️ Notifikácie neboli povolené.')
+        console.warn('⚠️ Notifications not granted')
         return
       }
 
-      // Spustíme registráciu FCM
-      await registerFCM()
-      setNotificationsEnabled(true)
-      alert('✅ Notifikácie boli povolené.')
+      const { initializeApp } = await import('firebase/app')
+      const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
+
+      const firebaseConfig = {
+        apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
+        authDomain: "tokeny-246df.firebaseapp.com",
+        projectId: "tokeny-246df",
+        storageBucket: "tokeny-246df.firebasestorage.app",
+        messagingSenderId: "410206660442",
+        appId: "1:410206660442:web:c6b530a5cf6ec5a9e77563",
+        measurementId: "G-QB2EJ0JFZL"
+      }
+
+      const app = initializeApp(firebaseConfig)
+      const messaging = getMessaging(app)
+
+      const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
+
+      const token = await getToken(messaging, {
+        vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
+        serviceWorkerRegistration: registration,
+      })
+
+      if (token) {
+        console.log('✅ FCM token:', token)
+        socketRef.current?.send(JSON.stringify({
+          type: 'fcm-token',
+          token
+        }))
+      }
+
+      onMessage(messaging, (payload) => {
+        console.log('🔔 Foreground notification:', payload)
+        alert(payload.notification?.title || 'Prichádzajúci hovor')
+      })
     } catch (err) {
-      console.error('Error enabling notifications:', err)
-      alert('❌ Nepodarilo sa povoliť notifikácie.')
+      console.error('❌ FCM registration error', err)
     }
   }
-
-  // FCM registrácia
-  const registerFCM = async () => {
-  const { initializeApp } = await import('firebase/app')
-  const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyAQJj_0HpQsySQDfYFwlXNQqBph3B6yJ_4",
-    authDomain: "tokeny-246df.firebaseapp.com",
-    projectId: "tokeny-246df",
-    storageBucket: "tokeny-246df.firebasestorage.app",
-    messagingSenderId: "410206660442",
-    appId: "1:410206660442:web:c6b530a5cf6ec5a9e77563",
-    measurementId: "G-QB2EJ0JFZL"
-  }
-
-  const app = initializeApp(firebaseConfig)
-  const messaging = getMessaging(app)
-
-  if ('serviceWorker' in navigator) {
-    const registration = await navigator.serviceWorker.register('/firebase-messaging-sw.js')
-
-    const token = await getToken(messaging, {
-      vapidKey: 'BN5tQV4u5UmSo6E-u3WBgWlYPDQmGraDyGb726t_8jvwl_MtAAjAk1QZ1QrMx6cMJNhy6tJRwIyXsiBKNhsSKhU',
-      serviceWorkerRegistration: registration,
-    })
-
-    if (token) {
-      console.log('✅ FCM token:', token)
-      socketRef.current?.send(JSON.stringify({
-        type: 'fcm-token',
-        token
-      }))
-    } else {
-      console.warn('⚠️ No FCM token received – user may have denied permission.')
-    }
-  }
-
-  onMessage(messaging, (payload) => {
-    console.log('🔔 Foreground notification:', payload)
-    alert(payload.notification?.title || 'Prichádzajúci hovor')
-  })
-}
 
   // Setup WebRTC connection
   const setupConnection = async (isCaller: boolean) => {
@@ -139,8 +125,12 @@ export default function HomePage() {
     }
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
+      if (event.candidate && remoteSocketIdRef.current) {
+        socketRef.current?.send(JSON.stringify({
+          type: 'ice',
+          candidate: event.candidate,
+          to: remoteSocketIdRef.current
+        }))
       }
     }
 
@@ -153,17 +143,6 @@ export default function HomePage() {
         type: 'offer',
         offer
       }))
-      if (remoteTokenRef.current) {
-        try {
-          await fetch('/api/send-notification', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token: remoteTokenRef.current })
-          })
-        } catch (err) {
-          console.error('Failed to send notification', err)
-        }
-      }
     }
   }
 
@@ -186,8 +165,12 @@ export default function HomePage() {
     }
 
     pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        socketRef.current?.send(JSON.stringify({ type: 'ice', candidate: event.candidate }))
+      if (event.candidate && remoteSocketIdRef.current) {
+        socketRef.current?.send(JSON.stringify({
+          type: 'ice',
+          candidate: event.candidate,
+          to: remoteSocketIdRef.current
+        }))
       }
     }
 
@@ -195,7 +178,12 @@ export default function HomePage() {
     await pc.setRemoteDescription(new RTCSessionDescription(offer))
     const answer = await pc.createAnswer()
     await pc.setLocalDescription(answer)
-    socketRef.current?.send(JSON.stringify({ type: 'answer', answer }))
+
+    socketRef.current?.send(JSON.stringify({
+      type: 'answer',
+      answer,
+      to: remoteSocketIdRef.current
+    }))
   }
 
   const handleAnswer = async (answer: RTCSessionDescriptionInit) => {
@@ -238,14 +226,6 @@ export default function HomePage() {
         </button>
       )}
 
-{!notificationsEnabled && (
-  <button
-    onClick={requestNotifications}
-    className="bg-yellow-500 px-4 py-2 rounded"
-  >
-    Povoliť notifikácie
-  </button>
-)}
       <div className="flex gap-4 mt-4">
         <div>
           <h2>Lokálne video</h2>
