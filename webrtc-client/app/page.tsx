@@ -12,7 +12,8 @@ export default function HomePage() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null)
   const peerConnection = useRef<RTCPeerConnection | null>(null)
   const socketRef = useRef<WebSocket | null>(null)
-const [notificationsEnabled, setNotificationsEnabled] = useState(false)
+  const remoteTokenRef = useRef<string | null>(null)
+  const [notificationsEnabled, setNotificationsEnabled] = useState(false)
 
   // Určenie role
   useEffect(() => {
@@ -26,55 +27,57 @@ const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   }, [user])
 
   // WebSocket + register + FCM
- useEffect(() => {
-  if (typeof window === 'undefined' || !role) return
+  useEffect(() => {
+    if (typeof window === 'undefined' || !role) return
 
-  const ws = new WebSocket('wss://bbb-node.onrender.com')
-  socketRef.current = ws
+    const ws = new WebSocket('wss://bbb-node.onrender.com')
+    socketRef.current = ws
 
-  ws.onopen = () => {
-    ws.send(JSON.stringify({ type: 'register', role }))
-    console.log(`📡 Registered as ${role}`)
-    // už nevoláme registerFCM() automaticky
-  }
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'register', role }))
+      console.log(`📡 Registered as ${role}`)
+      // už nevoláme registerFCM() automaticky
+    }
 
-  ws.onmessage = async (event) => {
-    const data = JSON.parse(event.data)
-    if (data.type === 'offer') {
-      await handleOffer(data.offer)
-    } else if (data.type === 'answer') {
-      await handleAnswer(data.answer)
-    } else if (data.type === 'ice') {
-      if (peerConnection.current) {
-        await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+    ws.onmessage = async (event) => {
+      const data = JSON.parse(event.data)
+      if (data.type === 'offer') {
+        await handleOffer(data.offer)
+      } else if (data.type === 'answer') {
+        await handleAnswer(data.answer)
+      } else if (data.type === 'ice') {
+        if (peerConnection.current) {
+          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
+        }
+      } else if (data.type === 'fcm-token') {
+        remoteTokenRef.current = data.token
       }
     }
-  }
 
-  return () => ws.close()
-}, [role])
+    return () => ws.close()
+  }, [role])
 
 
   const requestNotifications = async () => {
-  try {
-    const permission = await Notification.requestPermission()
-    if (permission !== 'granted') {
-      alert('⚠️ Notifikácie neboli povolené.')
-      return
+    try {
+      const permission = await Notification.requestPermission()
+      if (permission !== 'granted') {
+        alert('⚠️ Notifikácie neboli povolené.')
+        return
+      }
+
+      // Spustíme registráciu FCM
+      await registerFCM()
+      setNotificationsEnabled(true)
+      alert('✅ Notifikácie boli povolené.')
+    } catch (err) {
+      console.error('Error enabling notifications:', err)
+      alert('❌ Nepodarilo sa povoliť notifikácie.')
     }
-
-    // Spustíme registráciu FCM
-    await registerFCM()
-    setNotificationsEnabled(true)
-    alert('✅ Notifikácie boli povolené.')
-  } catch (err) {
-    console.error('Error enabling notifications:', err)
-    alert('❌ Nepodarilo sa povoliť notifikácie.')
   }
-}
 
-// FCM registrácia
-const registerFCM = async () => {
+  // FCM registrácia
+  const registerFCM = async () => {
   const { initializeApp } = await import('firebase/app')
   const { getMessaging, getToken, onMessage } = await import('firebase/messaging')
 
@@ -150,6 +153,17 @@ const registerFCM = async () => {
         type: 'offer',
         offer
       }))
+      if (remoteTokenRef.current) {
+        try {
+          await fetch('/api/send-notification', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ token: remoteTokenRef.current })
+          })
+        } catch (err) {
+          console.error('Failed to send notification', err)
+        }
+      }
     }
   }
 
