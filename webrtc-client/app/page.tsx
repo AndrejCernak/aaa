@@ -26,33 +26,34 @@ const [notificationsEnabled, setNotificationsEnabled] = useState(false)
   }, [user])
 
   // WebSocket + register + FCM
-  useEffect(() => {
-    if (typeof window === 'undefined' || !role) return
+ useEffect(() => {
+  if (typeof window === 'undefined' || !role) return
 
-    const ws = new WebSocket('wss://bbb-node.onrender.com')
-    socketRef.current = ws
+  const ws = new WebSocket('wss://bbb-node.onrender.com')
+  socketRef.current = ws
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'register', role }))
-      console.log(`📡 Registered as ${role}`)
-      registerFCM()
-    }
+  ws.onopen = () => {
+    ws.send(JSON.stringify({ type: 'register', role }))
+    console.log(`📡 Registered as ${role}`)
+    // už nevoláme registerFCM() automaticky
+  }
 
-    ws.onmessage = async (event) => {
-      const data = JSON.parse(event.data)
-      if (data.type === 'offer') {
-        await handleOffer(data.offer)
-      } else if (data.type === 'answer') {
-        await handleAnswer(data.answer)
-      } else if (data.type === 'ice') {
-        if (peerConnection.current) {
-          await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
-        }
+  ws.onmessage = async (event) => {
+    const data = JSON.parse(event.data)
+    if (data.type === 'offer') {
+      await handleOffer(data.offer)
+    } else if (data.type === 'answer') {
+      await handleAnswer(data.answer)
+    } else if (data.type === 'ice') {
+      if (peerConnection.current) {
+        await peerConnection.current.addIceCandidate(new RTCIceCandidate(data.candidate))
       }
     }
+  }
 
-    return () => ws.close()
-  }, [role])
+  return () => ws.close()
+}, [role])
+
 
   const requestNotifications = async () => {
   try {
